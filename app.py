@@ -14,6 +14,8 @@ uploaded_file = st.file_uploader("Escolha o arquivo CSV", type="csv")
 if uploaded_file:
     try:
         df = pd.read_csv(uploaded_file, encoding='latin1')
+        df.columns = df.columns.str.strip()  # Remove espaços extras dos nomes das colunas
+
         if 'Pedido' not in df.columns or 'Envio codigo' not in df.columns:
             st.error("O arquivo precisa conter as colunas 'Pedido' e 'Envio codigo'.")
         else:
