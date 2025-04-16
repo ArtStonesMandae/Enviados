@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
+import unicodedata
 
 st.set_page_config(page_title="Rastreamento de Pedidos", layout="wide")
 st.title("📦 Rastreamento de Encomendas - Correios")
@@ -11,20 +12,23 @@ st.markdown("Faça upload do arquivo CSV com os pedidos. O app buscará o status
 
 uploaded_file = st.file_uploader("Escolha o arquivo CSV", type="csv")
 
+def normalizar_colunas(colunas):
+    return [unicodedata.normalize('NFKD', c).encode('ascii', errors='ignore').decode('utf-8').strip().lower() for c in colunas]
+
 if uploaded_file:
     try:
-        df = pd.read_csv(uploaded_file, encoding='latin1')
-        df.columns = df.columns.str.strip()  # Remove espaços extras dos nomes das colunas
+        df = pd.read_csv(uploaded_file, encoding='latin1', sep=';')
+        df.columns = normalizar_colunas(df.columns)
 
-        if 'Pedido' not in df.columns or 'Envio codigo' not in df.columns:
+        if 'pedido' not in df.columns or 'envio codigo' not in df.columns:
             st.error("O arquivo precisa conter as colunas 'Pedido' e 'Envio codigo'.")
         else:
             rastreios = []
 
             with st.spinner('Buscando status dos pedidos...'):
                 for _, row in df.iterrows():
-                    pedido = row['Pedido']
-                    codigo = str(row['Envio codigo']).strip()
+                    pedido = row['pedido']
+                    codigo = str(row['envio codigo']).strip()
                     if not codigo:
                         rastreios.append({"Pedido": pedido, "Código": codigo, "Status": "Código vazio"})
                         continue
@@ -40,8 +44,8 @@ if uploaded_file:
                             status = status_html.find("li").text.strip()
                         else:
                             status = "Status não encontrado"
-                    except Exception as e:
-                        status = f"Erro na consulta"
+                    except Exception:
+                        status = "Erro na consulta"
 
                     rastreios.append({"Pedido": pedido, "Código": codigo, "Status": status})
 
