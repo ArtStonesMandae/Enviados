@@ -2,18 +2,37 @@
 import streamlit as st
 import pandas as pd
 import requests
-from bs4 import BeautifulSoup
 import unicodedata
 
 st.set_page_config(page_title="Rastreamento de Pedidos", layout="wide")
-st.title("📦 Rastreamento de Encomendas - Correios")
+st.title("📦 Rastreamento de Encomendas - Correios (oficial)")
 
-st.markdown("Faça upload do arquivo CSV com os pedidos. O app buscará o status de cada código de rastreio.")
+st.markdown("Faça upload do arquivo CSV com os pedidos. O app buscará o status diretamente no site oficial dos Correios.")
 
 uploaded_file = st.file_uploader("Escolha o arquivo CSV", type="csv")
 
 def normalizar_colunas(colunas):
     return [unicodedata.normalize('NFKD', c).encode('ascii', errors='ignore').decode('utf-8').strip().lower() for c in colunas]
+
+def buscar_status_correios(codigo):
+    url = 'https://rastreamento.correios.com.br/app/resultado.php'
+    headers = {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'User-Agent': 'Mozilla/5.0'
+    }
+    data = {'objetos': codigo}
+    try:
+        response = requests.post(url, data=data, headers=headers, timeout=10)
+        json_data = response.json()
+        eventos = json_data.get('objetos', [{}])[0].get('eventos', [])
+        if eventos:
+            evento = eventos[0]
+            status = evento.get('descricao', 'Status não disponível')
+            data = evento.get('dtHrCriado', '')
+            return f"{status} em {data}"
+        return "Status não encontrado"
+    except:
+        return "Erro na consulta"
 
 if uploaded_file:
     try:
@@ -25,7 +44,7 @@ if uploaded_file:
         else:
             rastreios = []
 
-            with st.spinner('Buscando status dos pedidos...'):
+            with st.spinner('Consultando os Correios...'):
                 for _, row in df.iterrows():
                     pedido = row['pedido']
                     codigo = str(row['envio codigo']).strip()
@@ -33,20 +52,7 @@ if uploaded_file:
                         rastreios.append({"Pedido": pedido, "Código": codigo, "Status": "Código vazio"})
                         continue
 
-                    url = f"https://www.linkcorreios.com.br/{codigo}"
-                    headers = {"User-Agent": "Mozilla/5.0"}
-
-                    try:
-                        response = requests.get(url, headers=headers, timeout=10)
-                        soup = BeautifulSoup(response.text, 'html.parser')
-                        status_html = soup.find("ul", class_="linha_status")
-                        if status_html:
-                            status = status_html.find("li").text.strip()
-                        else:
-                            status = "Status não encontrado"
-                    except Exception:
-                        status = "Erro na consulta"
-
+                    status = buscar_status_correios(codigo)
                     rastreios.append({"Pedido": pedido, "Código": codigo, "Status": status})
 
             resultado_df = pd.DataFrame(rastreios)
