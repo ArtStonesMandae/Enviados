@@ -2,39 +2,32 @@
 import streamlit as st
 import pandas as pd
 import requests
+from bs4 import BeautifulSoup
 import unicodedata
-import json
 
-st.set_page_config(page_title="Rastreamento Correios - Debug", layout="wide")
-st.title("📦 Rastreamento de Encomendas - Correios (com Debug)")
+st.set_page_config(page_title="Rastreamento Correios - Gratuito", layout="wide")
+st.title("📦 Rastreamento de Encomendas - Correios (Gratuito e em massa)")
 
-st.markdown("Faça upload do arquivo CSV com os pedidos. O app buscará o status diretamente na API oficial dos Correios.")
+st.markdown("Faça upload do arquivo CSV com os pedidos. O app buscará o status via linkcorreios.com.br, sem precisar de API.")
 
 uploaded_file = st.file_uploader("Escolha o arquivo CSV", type="csv")
 
 def normalizar_colunas(colunas):
     return [unicodedata.normalize('NFKD', c).encode('ascii', errors='ignore').decode('utf-8').strip().lower() for c in colunas]
 
-def buscar_status_api_debug(codigo):
-    url = f"https://proxyapp.correios.com.br/v1/sro-rastro/{codigo}"
+def buscar_status_scraping(codigo):
+    url = f"https://www.linkcorreios.com.br/{codigo}"
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
         response = requests.get(url, headers=headers, timeout=10)
-        data = response.json()
-
-        # DEBUG: Exibir resposta completa da API
-        st.markdown(f"### 🔍 Resposta da API para {codigo}")
-        st.code(json.dumps(data, indent=2, ensure_ascii=False), language='json')
-
-        eventos = data.get("objetos", [{}])[0].get("eventos", [])
-        if eventos:
-            evento = eventos[0]
-            status = evento.get("descricao", "Sem descrição")
-            data_evento = evento.get("dtHrCriado", "")
-            return f"{status} em {data_evento}"
+        soup = BeautifulSoup(response.text, 'html.parser')
+        status_html = soup.find("ul", class_="linha_status")
+        if status_html:
+            status = status_html.find("li").text.strip()
+            return status
         return "Status não encontrado"
-    except Exception as e:
-        return f"Erro na consulta: {str(e)}"
+    except:
+        return "Erro na consulta"
 
 if uploaded_file:
     try:
@@ -46,7 +39,7 @@ if uploaded_file:
         else:
             rastreios = []
 
-            with st.spinner('Consultando os Correios...'):
+            with st.spinner('Consultando linkcorreios.com.br...'):
                 for _, row in df.iterrows():
                     pedido = row['pedido']
                     codigo = str(row['envio codigo']).strip()
@@ -54,7 +47,7 @@ if uploaded_file:
                         rastreios.append({"Pedido": pedido, "Código": codigo, "Status": "Código vazio"})
                         continue
 
-                    status = buscar_status_api_debug(codigo)
+                    status = buscar_status_scraping(codigo)
                     rastreios.append({"Pedido": pedido, "Código": codigo, "Status": status})
 
             resultado_df = pd.DataFrame(rastreios)
