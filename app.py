@@ -4,32 +4,28 @@ import pandas as pd
 import requests
 import unicodedata
 
-st.set_page_config(page_title="Rastreamento de Pedidos", layout="wide")
-st.title("📦 Rastreamento de Encomendas - Correios (oficial)")
+st.set_page_config(page_title="Rastreamento de Pedidos - Correios API Nova", layout="wide")
+st.title("📦 Rastreamento de Encomendas - Correios (API Atualizada)")
 
-st.markdown("Faça upload do arquivo CSV com os pedidos. O app buscará o status diretamente no site oficial dos Correios.")
+st.markdown("Faça upload do arquivo CSV com os pedidos. O app buscará o status diretamente via API oficial dos Correios.")
 
 uploaded_file = st.file_uploader("Escolha o arquivo CSV", type="csv")
 
 def normalizar_colunas(colunas):
     return [unicodedata.normalize('NFKD', c).encode('ascii', errors='ignore').decode('utf-8').strip().lower() for c in colunas]
 
-def buscar_status_correios(codigo):
-    url = 'https://rastreamento.correios.com.br/app/resultado.php'
-    headers = {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'User-Agent': 'Mozilla/5.0'
-    }
-    data = {'objetos': codigo}
+def buscar_status_api_nova(codigo):
+    url = f"https://proxyapp.correios.com.br/v1/sro-rastro/{codigo}"
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
-        response = requests.post(url, data=data, headers=headers, timeout=10)
-        json_data = response.json()
-        eventos = json_data.get('objetos', [{}])[0].get('eventos', [])
+        response = requests.get(url, headers=headers, timeout=10)
+        data = response.json()
+        eventos = data.get("objetos", [{}])[0].get("eventos", [])
         if eventos:
             evento = eventos[0]
-            status = evento.get('descricao', 'Status não disponível')
-            data = evento.get('dtHrCriado', '')
-            return f"{status} em {data}"
+            status = evento.get("descricao", "Sem descrição")
+            data_evento = evento.get("dtHrCriado", "")
+            return f"{status} em {data_evento}"
         return "Status não encontrado"
     except:
         return "Erro na consulta"
@@ -52,7 +48,7 @@ if uploaded_file:
                         rastreios.append({"Pedido": pedido, "Código": codigo, "Status": "Código vazio"})
                         continue
 
-                    status = buscar_status_correios(codigo)
+                    status = buscar_status_api_nova(codigo)
                     rastreios.append({"Pedido": pedido, "Código": codigo, "Status": status})
 
             resultado_df = pd.DataFrame(rastreios)
