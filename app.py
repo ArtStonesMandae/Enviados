@@ -2,31 +2,37 @@
 import streamlit as st
 import pandas as pd
 import requests
-from bs4 import BeautifulSoup
 import unicodedata
 
-st.set_page_config(page_title="Rastreamento Correios - Gratuito", layout="wide")
-st.title("📦 Rastreamento de Encomendas - Correios (Gratuito e em massa)")
+st.set_page_config(page_title="Rastreamento Correios - API Postmon", layout="wide")
+st.title("📦 Rastreamento de Encomendas - Correios (via API Postmon)")
 
-st.markdown("Faça upload do arquivo CSV com os pedidos. O app buscará o status via linkcorreios.com.br, sem precisar de API.")
+st.markdown("Faça upload de um arquivo CSV com as colunas 'Pedido' e 'Envio codigo' para consultar o status de rastreio dos Correios.")
 
 uploaded_file = st.file_uploader("Escolha o arquivo CSV", type="csv")
 
 def normalizar_colunas(colunas):
     return [unicodedata.normalize('NFKD', c).encode('ascii', errors='ignore').decode('utf-8').strip().lower() for c in colunas]
 
-def buscar_status_scraping(codigo):
-    url = f"https://www.linkcorreios.com.br/{codigo}"
-    headers = {"User-Agent": "Mozilla/5.0"}
+def buscar_status_postmon(codigo):
+    url = f"https://api.postmon.com.br/v1/rastreio/ect/{codigo}"
     try:
-        response = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        status_html = soup.find("ul", class_="linha_status")
-        if status_html:
-            status = status_html.find("li").text.strip()
-            return status
-        return "Status não encontrado"
-    except:
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            eventos = data.get('eventos', [])
+            if eventos:
+                ultimo = eventos[0]
+                descricao = ultimo.get('descricao', 'Sem descrição')
+                data_evento = ultimo.get('data', '')
+                return f"{descricao} em {data_evento}"
+            else:
+                return "Sem eventos"
+        elif response.status_code == 404:
+            return "Código não encontrado"
+        else:
+            return f"Erro: {response.status_code}"
+    except Exception as e:
         return "Erro na consulta"
 
 if uploaded_file:
@@ -39,7 +45,7 @@ if uploaded_file:
         else:
             rastreios = []
 
-            with st.spinner('Consultando linkcorreios.com.br...'):
+            with st.spinner('Consultando a API Postmon...'):
                 for _, row in df.iterrows():
                     pedido = row['pedido']
                     codigo = str(row['envio codigo']).strip()
@@ -47,7 +53,7 @@ if uploaded_file:
                         rastreios.append({"Pedido": pedido, "Código": codigo, "Status": "Código vazio"})
                         continue
 
-                    status = buscar_status_scraping(codigo)
+                    status = buscar_status_postmon(codigo)
                     rastreios.append({"Pedido": pedido, "Código": codigo, "Status": status})
 
             resultado_df = pd.DataFrame(rastreios)
