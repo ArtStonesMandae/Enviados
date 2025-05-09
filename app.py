@@ -1,67 +1,71 @@
 import streamlit as st
 import pandas as pd
 import requests
-from io import StringIO
+import unicodedata
 
-# Token da Mandaê
-API_TOKEN = "cd8c9ce94d3c9f9fb6b8ee77c9e8b681"
-API_URL = "https://api.mandae.com.br/v2/tracking/"
+# Configuração inicial da página
+st.set_page_config(page_title="Rastreamento Mandaê", layout="wide")
+st.title("📦 Rastreamento de Encomendas - Mandaê (via API)")
 
-# Função para consultar a API da Mandaê
-def consultar_status(codigo):
-    headers = {"Authorization": f"Token {API_TOKEN}"}
+st.markdown("Faça upload de um arquivo CSV com as colunas 'Pedido' e 'Envio codigo' para consultar o status de rastreio via Mandaê.")
+
+uploaded_file = st.file_uploader("Escolha o arquivo CSV", type="csv")
+
+# Normalização de colunas para evitar erros com acentos e maiúsculas
+def normalizar_colunas(colunas):
+    return [unicodedata.normalize('NFKD', c).encode('ascii', errors='ignore').decode('utf-8').strip().lower() for c in colunas]
+
+# Função para consultar status na API da Mandaê
+def buscar_status_mandae(codigo):
+    url = f"https://api.mandae.com.br/v2/tracking/{codigo}"
+    headers = {"Authorization": "Token cd8c9ce94d3c9f9fb6b8ee77c9e8b681"}
+
     try:
-        response = requests.get(f"{API_URL}{codigo}", headers=headers, timeout=10)
+        response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
-            dados = response.json()
-            status = dados.get("status", "Indefinido")
-            ultima_atualizacao = dados.get("updated_at", "")
-            return status, ultima_atualizacao
+            data = response.json()
+            status = data.get('status', 'Sem status')
+            updated = data.get('updated_at', '')
+            return f"{status} em {updated}" if updated else status
+        elif response.status_code == 404:
+            return "Código não encontrado"
         else:
-            return f"Erro {response.status_code}", ""
+            return f"Erro: {response.status_code}"
     except Exception as e:
-        return "Erro na conexão", ""
+        return "Erro na consulta"
 
-# Título da página
-st.title("Rastreamento de Pedidos - Mandaê")
-
-# Upload de arquivo
-arquivo = st.file_uploader("Faça upload da planilha (.csv)", type=["csv"])
-
-if arquivo is not None:
-    # Tentar abrir o CSV com UTF-8 e fallback para ISO-8859-1
+# Leitura e processamento do arquivo CSV
+if uploaded_file:
     try:
-        df = pd.read_csv(arquivo)
-    except UnicodeDecodeError:
-        df = pd.read_csv(arquivo, encoding="ISO-8859-1")
+        df = pd.read_csv(uploaded_file, encoding='latin1', sep=';')
+        df.columns = normalizar_colunas(df.columns)
 
-    if 'Pedido' not in df.columns or 'Envio codigo' not in df.columns:
-        st.error("A planilha precisa conter as colunas: 'Pedido' e 'Envio codigo'")
-    else:
-        st.success("Planilha carregada com sucesso!")
-        resultados = []
+        if 'pedido' not in df.columns or 'envio codigo' not in df.columns:
+            st.error("O arquivo precisa conter as colunas 'Pedido' e 'Envio codigo'.")
+        else:
+            rastreios = []
 
-        with st.spinner("Consultando status dos pedidos..."):
-            for _, row in df.iterrows():
-                pedido = row['Pedido']
-                codigo = str(row['Envio codigo']).strip()
-                status, ultima_data = consultar_status(codigo)
-                resultados.append({
-                    "Pedido": pedido,
-                    "Código de Rastreio": codigo,
-                    "Status": status,
-                    "Última Atualização": ultima_data
-                })
+            with st.spinner('Consultando a API Mandaê...'):
+                for _, row in df.iterrows():
+                    pedido = row['pedido']
+                    codigo = str(row['envio codigo']).strip()
+                    if not codigo:
+                        rastreios.append({"Pedido": pedido, "Código": codigo, "Status": "Código vazio"})
+                        continue
 
-        # Criar DataFrame com os resultados
-        resultado_df = pd.DataFrame(resultados)
-        st.dataframe(resultado_df)
+                    status = buscar_status_mandae(codigo)
+                    rastreios.append({"Pedido": pedido, "Código": codigo, "Status": status})
 
-        # Download do arquivo final
-        csv = resultado_df.to_csv(index=False)
-        st.download_button(
-            label="📥 Baixar resultado em CSV",
-            data=csv,
-            file_name="rastreio_mandae.csv",
-            mime="text/csv"
-        )
+            resultado_df = pd.DataFrame(rastreios)
+            st.success("Consulta finalizada!")
+            st.dataframe(resultado_df, use_container_width=True)
+
+            csv = resultado_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Baixar resultado em CSV",
+                data=csv,
+                file_name='status_rastreamento.csv',
+                mime='text/csv'
+            )
+    except Exception as e:
+        st.error("Erro ao ler o arquivo. Verifique se está no formato correto.")
