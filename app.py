@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 from io import StringIO
 
-# Token da Mandaê (pode esconder isso num arquivo .env se quiser depois)
+# Token da Mandaê
 API_TOKEN = "cd8c9ce94d3c9f9fb6b8ee77c9e8b681"
 API_URL = "https://api.mandae.com.br/v2/tracking/"
 
@@ -29,8 +29,11 @@ st.title("Rastreamento de Pedidos - Mandaê")
 arquivo = st.file_uploader("Faça upload da planilha (.csv)", type=["csv"])
 
 if arquivo is not None:
-    # Leitura do CSV
-    df = pd.read_csv(arquivo)
+    # Tentar abrir o CSV com UTF-8 e fallback para ISO-8859-1
+    try:
+        df = pd.read_csv(arquivo)
+    except UnicodeDecodeError:
+        df = pd.read_csv(arquivo, encoding="ISO-8859-1")
 
     if 'Pedido' not in df.columns or 'Envio codigo' not in df.columns:
         st.error("A planilha precisa conter as colunas: 'Pedido' e 'Envio codigo'")
