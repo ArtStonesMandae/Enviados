@@ -3,7 +3,7 @@ import pandas as pd
 import requests
 import unicodedata
 
-# Configuração inicial da página
+# Configuração da página
 st.set_page_config(page_title="Rastreamento Mandaê", layout="wide")
 st.title("📦 Rastreamento de Encomendas - Mandaê (via API)")
 
@@ -11,14 +11,17 @@ st.markdown("Faça upload de um arquivo CSV com as colunas 'Pedido' e 'Envio cod
 
 uploaded_file = st.file_uploader("Escolha o arquivo CSV", type="csv")
 
-# Normalização de colunas para evitar erros com acentos e maiúsculas
+# Função para normalizar colunas
 def normalizar_colunas(colunas):
     return [unicodedata.normalize('NFKD', c).encode('ascii', errors='ignore').decode('utf-8').strip().lower() for c in colunas]
 
-# Função para consultar status na API da Mandaê
+# Consulta de status na API da Mandaê
 def buscar_status_mandae(codigo):
     url = f"https://api.mandae.com.br/v2/tracking/{codigo}"
-    headers = {"Authorization": "Token cd8c9ce94d3c9f9fb6b8ee77c9e8b681"}
+    headers = {
+        "Authorization": "Token cd8c9ce94d3c9f9fb6b8ee77c9e8b681",
+        "Accept": "application/json"
+    }
 
     try:
         response = requests.get(url, headers=headers, timeout=10)
@@ -29,12 +32,14 @@ def buscar_status_mandae(codigo):
             return f"{status} em {updated}" if updated else status
         elif response.status_code == 404:
             return "Código não encontrado"
+        elif response.status_code == 403:
+            return "Erro 403 (acesso negado)"
         else:
             return f"Erro: {response.status_code}"
     except Exception as e:
         return "Erro na consulta"
 
-# Leitura e processamento do arquivo CSV
+# Processamento do CSV
 if uploaded_file:
     try:
         df = pd.read_csv(uploaded_file, encoding='latin1', sep=';')
