@@ -4,10 +4,10 @@ import requests
 import unicodedata
 
 # Configuração da página
-st.set_page_config(page_title="Rastreamento Mandaê", layout="wide")
-st.title("📦 Rastreamento de Encomendas - Mandaê (via API)")
+st.set_page_config(page_title="Rastreamento Intelipost", layout="wide")
+st.title("📦 Rastreamento de Encomendas - Intelipost")
 
-st.markdown("Faça upload de um arquivo CSV com as colunas 'Pedido' e 'Envio codigo' para consultar o status de rastreio via Mandaê.")
+st.markdown("Faça upload de um arquivo CSV com as colunas 'Pedido' e 'Envio codigo' para consultar o status de rastreio.")
 
 uploaded_file = st.file_uploader("Escolha o arquivo CSV", type="csv")
 
@@ -15,25 +15,27 @@ uploaded_file = st.file_uploader("Escolha o arquivo CSV", type="csv")
 def normalizar_colunas(colunas):
     return [unicodedata.normalize('NFKD', c).encode('ascii', errors='ignore').decode('utf-8').strip().lower() for c in colunas]
 
-# Consulta de status na API da Mandaê
-def buscar_status_mandae(codigo):
-    url = f"https://api.mandae.com.br/v2/tracking/{codigo}"
+# Consulta de status via Intelipost
+def buscar_status_intelipost(codigo):
+    url = f"https://api.intelipost.com.br/api/v1/tracking/{codigo}"
     headers = {
-        "Authorization": "Token cd8c9ce94d3c9f9fb6b8ee77c9e8b681",
-        "Accept": "application/json"
+        "logistic-provider-api-key": "f831fdc3-dc90-dd4f-66d7-2f7c023560d0"
     }
 
     try:
         response = requests.get(url, headers=headers, timeout=10)
         if response.status_code == 200:
             data = response.json()
-            status = data.get('status', 'Sem status')
-            updated = data.get('updated_at', '')
-            return f"{status} em {updated}" if updated else status
+            eventos = data.get("events", [])
+            if eventos:
+                ultimo = eventos[0]
+                descricao = ultimo.get("description", "Sem descrição")
+                data_evento = ultimo.get("event_date", "")
+                return f"{descricao} em {data_evento}"
+            else:
+                return "Sem eventos encontrados"
         elif response.status_code == 404:
             return "Código não encontrado"
-        elif response.status_code == 403:
-            return "Erro 403 (acesso negado)"
         else:
             return f"Erro: {response.status_code}"
     except Exception as e:
@@ -50,7 +52,7 @@ if uploaded_file:
         else:
             rastreios = []
 
-            with st.spinner('Consultando a API Mandaê...'):
+            with st.spinner('Consultando a API Intelipost...'):
                 for _, row in df.iterrows():
                     pedido = row['pedido']
                     codigo = str(row['envio codigo']).strip()
@@ -58,7 +60,7 @@ if uploaded_file:
                         rastreios.append({"Pedido": pedido, "Código": codigo, "Status": "Código vazio"})
                         continue
 
-                    status = buscar_status_mandae(codigo)
+                    status = buscar_status_intelipost(codigo)
                     rastreios.append({"Pedido": pedido, "Código": codigo, "Status": status})
 
             resultado_df = pd.DataFrame(rastreios)
